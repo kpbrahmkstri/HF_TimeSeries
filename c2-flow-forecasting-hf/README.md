@@ -125,7 +125,9 @@ These artifacts make the results SOC-reviewable and demo-ready.
 
 ## ▶️ How to Run
 1️⃣ Create and activate virtual environment (Windows)
+
 py -m venv .venv
+
 .venv\Scripts\Activate.ps1
 
 2️⃣ Install dependencies
