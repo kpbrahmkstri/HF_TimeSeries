@@ -23,14 +23,24 @@ def aggregate_flows_to_timeseries(
     df["group_id"] = df[group_key[0]].astype(str) + "->" + df[group_key[1]].astype(str)
 
     agg = df.groupby(["group_id", "t_bucket"]).agg(
-        flow_count=("protocol", "size"),
-        bytes_sum=("bytes", "sum"),
-        packets_sum=("packets", "sum"),
-        avg_duration=("duration", "mean"),
-        unique_dst_ports=("dst_port", "nunique"),
-        tcp_ratio=("protocol", lambda x: float((x == "TCP").sum()) / max(len(x), 1)),
-        udp_ratio=("protocol", lambda x: float((x == "UDP").sum()) / max(len(x), 1)),
-    ).reset_index().rename(columns={"t_bucket": "timestamp"})
+    flow_count=("protocol", "size"),
+    bytes_sum=("bytes", "sum"),
+    bytes_mean=("bytes", "mean"),
+    bytes_std=("bytes", "std"),
+    packets_sum=("packets", "sum"),
+    avg_duration=("duration", "mean"),
+    duration_std=("duration", "std"),
+    unique_dst_ports=("dst_port", "nunique"),
+    tcp_ratio=("protocol", lambda x: float((x == "TCP").sum()) / max(len(x), 1)),
+    udp_ratio=("protocol", lambda x: float((x == "UDP").sum()) / max(len(x), 1)),
+    port_443_ratio=("dst_port", lambda x: float((x == 443).sum()) / max(len(x), 1)),
+    dns_ratio=("dst_port", lambda x: float((x == 53).sum()) / max(len(x), 1)),
+    small_flow_ratio=("bytes", lambda x: float((x < 2000).sum()) / max(len(x), 1)),
+).reset_index().rename(columns={"t_bucket": "timestamp"})
+    
+    for col in ["bytes_std", "duration_std"]:
+        agg[col] = agg[col].fillna(0.0)
+
 
     ts = agg["timestamp"]
     hour = ts.dt.hour + ts.dt.minute / 60.0

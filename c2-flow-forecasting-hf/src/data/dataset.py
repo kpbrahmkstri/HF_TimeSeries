@@ -11,11 +11,21 @@ from src.config import TSConfig
 
 class FlowWindowDataset(Dataset):
     """
-    Produces model-ready dicts for HF TimeSeriesTransformer.
+    Windowed dataset for Hugging Face TimeSeriesTransformer.
 
-    IMPORTANT:
-    HF TimeSeriesTransformer requires extra history to compute lagged features.
-    We must provide: past_values length = context_length + max_lag
+    Key requirement:
+      HF TimeSeriesTransformer uses lagged features internally.
+      Therefore, past_values must include extra history:
+        past_length = context_length + max_lag
+
+    Each sample returns:
+      past_values:          (past_length, F)
+      future_values:        (prediction_length, F)
+      past_time_features:   (past_length, T)
+      future_time_features: (prediction_length, T)
+      masks + static placeholders
+
+    Additionally stores per-group timestamps (TS) so scoring can map windows to real time.
     """
 
     def __init__(
@@ -38,29 +48,41 @@ class FlowWindowDataset(Dataset):
         self.past_length = cfg.context_length + self.max_lag
         self.total_length = self.past_length + cfg.prediction_length
 
+        # Stores sliding window start indices: (group_id, start_idx)
         self.samples: List[Tuple[str, int]] = []
+
+        # Store per-group arrays to speed up indexing
+        # X: scaled features, TF: time features, TS: timestamps
         self.data: Dict[str, Dict[str, np.ndarray]] = {}
 
         for gid, gdf in group_series.items():
+            if gdf is None or len(gdf) == 0:
+                continue
+
             gdf = gdf.sort_values("timestamp").reset_index(drop=True)
 
-            X = gdf[feature_cols].to_numpy(dtype=np.float32)
-            TF = gdf[time_feat_cols].to_numpy(dtype=np.float32)
+            # Main features (scaled)
+            X = gdf[self.feature_cols].to_numpy(dtype=np.float32)
+            Xs = self.scaler.transform(X).astype(np.float32)
 
-            # Scale only the main features (not time features)
-            Xs = scaler.transform(X).astype(np.float32)
+            # Time features (not scaled)
+            TF = gdf[self.time_feat_cols].to_numpy(dtype=np.float32)
 
-            self.data[gid] = {"X": Xs, "TF": TF}
+            # Timestamps (for mapping windows -> time in scoring/plots)
+            TS = gdf["timestamp"].to_numpy()
+
+            self.data[gid] = {"X": Xs, "TF": TF, "TS": TS}
 
             total_len = len(gdf)
             if total_len < self.total_length:
                 continue
 
             if mode == "train":
+                # All windows (sliding)
                 for start in range(0, total_len - self.total_length + 1, cfg.stride):
                     self.samples.append((gid, start))
             else:
-                # Keep a few most recent windows for scoring
+                # For scoring: keep only the most recent portion (speeds up scoring)
                 start_min = max(0, total_len - 5 * self.total_length)
                 for start in range(start_min, total_len - self.total_length + 1, cfg.stride):
                     self.samples.append((gid, start))
@@ -68,26 +90,26 @@ class FlowWindowDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         gid, start = self.samples[idx]
         X = self.data[gid]["X"]
         TF = self.data[gid]["TF"]
 
-        p = self.cfg.prediction_length
         pl = self.past_length
+        p = self.cfg.prediction_length
 
         # Provide extra history for lag extraction
-        past_values = X[start : start + pl]                     # (context+max_lag, F)
-        future_values = X[start + pl : start + pl + p]          # (p, F)
+        past_values = X[start : start + pl]                    # (pl, F)
+        future_values = X[start + pl : start + pl + p]         # (p, F)
 
-        past_time_features = TF[start : start + pl]             # (context+max_lag, TFD)
-        future_time_features = TF[start + pl : start + pl + p]  # (p, TFD)
+        past_time_features = TF[start : start + pl]            # (pl, T)
+        future_time_features = TF[start + pl : start + pl + p] # (p, T)
 
-        # Observed masks (set 0 where missing if you add missingness later)
+        # Masks: all observed
         past_observed_mask = np.ones_like(past_values, dtype=np.float32)
         future_observed_mask = np.ones_like(future_values, dtype=np.float32)
 
-        # Static features placeholders (required by HF signature)
+        # Static placeholders required by HF signature
         static_categorical_features = np.zeros((1,), dtype=np.int64)
         static_real_features = np.zeros((1,), dtype=np.float32)
 
@@ -103,5 +125,6 @@ class FlowWindowDataset(Dataset):
         }
 
 
-def collate_fn(batch: List[dict]) -> dict:
+def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    """Stack tensors into a batch."""
     return {k: torch.stack([b[k] for b in batch], dim=0) for k in batch[0].keys()}
