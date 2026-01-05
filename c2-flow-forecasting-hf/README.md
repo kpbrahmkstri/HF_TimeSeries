@@ -161,7 +161,9 @@ results/
 
 The synthetic dataset includes a low-and-slow HTTPS beacon:
 
+```
 10.0.2.33 → 198.51.100.77
+```
 
 Characteristics:
 - Small payloads
@@ -191,3 +193,120 @@ It reflects how real SOC detection pipelines increasingly combine:
 - Per-host baselining
 - Online / streaming inference
 - LLM-generated alert explanations
+
+
+## Logical Architecture (Step-by-Step)
+Figure: End-to-end architecture for early detection of low-and-slow C2 using network flow time-series forecasting.
+
+```
+┌──────────────────────┐
+│   Raw Network Flows  │
+│ (NetFlow / VPC Logs) │
+│                      │
+│ timestamp, src_ip,   │
+│ dst_ip, bytes, ...   │
+└───────────┬──────────┘
+            │
+            ▼
+┌────────────────────────────┐
+│ Time Window Aggregation     │
+│ (e.g., 5-minute windows)   │
+│                            │
+│ • flow_count                │
+│ • bytes_sum / mean / std    │
+│ • packets_sum               │
+│ • duration stats            │
+│ • port ratios (443, DNS)    │
+│ • small-flow ratio          │
+└───────────┬────────────────┘
+            │
+            ▼
+┌────────────────────────────┐
+│ Multivariate Time Series   │
+│ per (src_ip → dst_ip)      │
+│                            │
+│ X[t] = [f1, f2, ..., fN]   │
+└───────────┬────────────────┘
+            │
+            ▼
+┌────────────────────────────┐
+│ Baseline Training Window   │
+│ (first N hours only)       │
+│                            │
+│ • scaler fit               │
+│ • clean behavior learning  │
+└───────────┬────────────────┘
+            │
+            ▼
+┌────────────────────────────────────────┐
+│ Hugging Face TimeSeriesTransformer     │
+│                                        │
+│ • Encoder: historical context          │
+│ • Decoder: probabilistic future        │
+│ • Lag-aware attention                  │
+│                                        │
+│ Outputs:                               │
+│   P(Y_future | Y_past)                 │
+└───────────┬────────────────────────────┘
+            │
+            ▼
+┌────────────────────────────┐
+│ Forecast vs Observed       │
+│                            │
+│ z = |y - μ| / σ            │
+│ anomaly_score = mean(z)    │
+└───────────┬────────────────┘
+            │
+            ▼
+┌────────────────────────────┐
+│ Persistence Logic          │
+│                            │
+│ • score > threshold        │
+│ • sustained across K bins  │
+└───────────┬────────────────┘
+            │
+            ▼
+┌────────────────────────────┐
+│ Alerts & Outputs           │
+│                            │
+│ • alerts.csv               │
+│ • c2_alerts.csv            │
+│ • anomaly_scores.png       │
+└────────────────────────────┘
+
+```
+
+## 🔍 Why This Architecture Works for Low-and-Slow C2
+Key Design Choices
+
+1. Time-Series First (Not Signature-Based)
+Instead of asking “Is this known bad?”, the system asks:
+
+“Is this behavior expected given historical patterns?”
+
+This makes it resilient to:
+- New infrastructure
+- Encrypted traffic
+- Cloud-hosted C2
+
+2. Probabilistic Forecasting (Not Point Prediction)
+The Hugging Face TimeSeriesTransformer produces distributions, not single predictions:
+
+- Mean → expected behavior
+- Variance → uncertainty
+- Deviations normalized by uncertainty → robust anomaly score
+
+This is critical for low-volume stealthy traffic.
+
+3. Persistence-Based Alerting
+Low-and-slow C2 doesn’t spike — it repeats.
+
+Persistence logic filters out:
+- One-off SaaS bursts
+- Backup jobs
+- Software updates
+
+while preserving:
+- Regular beaconing
+- Long-lived C2 channels
+
