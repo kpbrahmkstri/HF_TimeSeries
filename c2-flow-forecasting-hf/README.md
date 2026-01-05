@@ -125,29 +125,37 @@ These artifacts make the results SOC-reviewable and demo-ready.
 
 ## ▶️ How to Run
 1️⃣ Create and activate virtual environment (Windows)
-
+```
 py -m venv .venv
 
 .venv\Scripts\Activate.ps1
+```
 
 2️⃣ Install dependencies
+```
 python -m pip install --upgrade pip
+
 python -m pip install -r requirements.txt
+```
 
 3️⃣ Run the pipeline
+```
 python -m src.main `
   --csv data/flows_test.csv `
   --window 5min `
   --train_hours 12 `
   --anomaly_threshold 0.52 `
   --persistence_windows 4
+```
 
 4️⃣ Check outputs
+```
 results/
 ├── top_scores.csv
 ├── alerts.csv
 ├── c2_alerts.csv
 └── anomaly_scores.png
+```
 
 ### 🧪 Example Use Case Demonstrated
 
