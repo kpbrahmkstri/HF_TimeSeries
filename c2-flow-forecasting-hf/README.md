@@ -62,14 +62,122 @@ Unlike classical ARIMA or simple LSTMs, this model:
 - Captures subtle temporal drift
 - Produces interpretable residual-based anomaly scores
 
-## Input schema (CSV)
-timestamp,src_ip,dst_ip,src_port,dst_port,protocol,bytes,packets,duration,flags
+### 📊 Input Data
 
-## Install
-pip install -r requirements.txt
+The system operates on aggregated network flow data, derived from raw NetFlow / VPC Flow Logs / firewall logs.
 
-## Run
-python -m src.main --csv data/flows_test.csv --window 5min
+Raw flow schema (example)
+timestamp, src_ip, dst_ip, src_port, dst_port, protocol, bytes, packets, duration, flags
 
-Optional tuning:
-python -m src.main --csv src/data/flows_test.csv --window 5min --anomaly_threshold 2.5 --persistence_windows 3
+Aggregated features per time window
+
+Examples include:
+- flow_count
+- bytes_sum, bytes_mean, bytes_std
+- packets_sum
+- avg_duration, duration_std
+- unique_dst_ports
+- tcp_ratio, udp_ratio
+- port_443_ratio
+- dns_ratio
+- small_flow_ratio
+
+These features are intentionally generic and vendor-agnostic.
+
+## 🧠 Model Training Strategy
+
+- Training data: First N hours of traffic (baseline)
+- Scoring data: Entire dataset (including potential attacks)
+- Windowing:
+  - Context length: historical window used for forecasting
+  - Prediction length: future window to evaluate
+- Scaling: StandardScaler fit on baseline only
+- Lag safety: Extra history added to support HF lag extraction
+
+## 🚨 Anomaly Scoring & Alerting
+Anomaly score
+For each future window:
+score = mean( |observed − forecast_mean| / forecast_std )
+
+This is a normalized residual score across all features.
+
+### Persistence logic
+
+A window is only flagged if:
+- Score exceeds a threshold AND
+- The condition persists across multiple consecutive windows
+
+This is critical for detecting low-and-slow beaconing while suppressing one-off spikes.
+
+## 📈 Outputs
+
+The pipeline produces:
+
+📄 CSV files
+- results/top_scores.csv – highest anomaly scores
+- results/alerts.csv – all alerts after persistence logic
+- results/c2_alerts.csv – alerts involving a specific C2 destination
+
+📊 Visualization
+- results/anomaly_scores.png – anomaly score over time for top pairs and C2 traffic
+
+These artifacts make the results SOC-reviewable and demo-ready.
+
+## ▶️ How to Run
+1️⃣ Create and activate virtual environment (Windows)
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+
+2️⃣ Install dependencies
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+3️⃣ Run the pipeline
+python -m src.main `
+  --csv data/flows_test.csv `
+  --window 5min `
+  --train_hours 12 `
+  --anomaly_threshold 0.52 `
+  --persistence_windows 4
+
+4️⃣ Check outputs
+results/
+├── top_scores.csv
+├── alerts.csv
+├── c2_alerts.csv
+└── anomaly_scores.png
+
+### 🧪 Example Use Case Demonstrated
+
+The synthetic dataset includes a low-and-slow HTTPS beacon:
+
+10.0.2.33 → 198.51.100.77
+
+Characteristics:
+- Small payloads
+- Periodic connections
+- Port 443
+- Long dwell time
+
+The model successfully flags this behavior without signatures or IOCs.
+
+## 🚀 Why This Matters
+
+This project demonstrates how modern ML + time-series forecasting can:
+- Detect stealthy C2 activity earlier
+- Reduce reliance on brittle rules
+- Generalize across environments
+- Scale to cloud and enterprise networks
+
+It reflects how real SOC detection pipelines increasingly combine:
+- ML forecasting
+- Statistical scoring
+- Persistence-based alerting
+- Analyst-friendly outputs
+
+## 📌 Future Enhancements
+- Beacon-likeness heuristics (variance, periodicity)
+- ASN / geo enrichment
+- Per-host baselining
+- Online / streaming inference
+- LLM-generated alert explanations
