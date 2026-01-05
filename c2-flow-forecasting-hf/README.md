@@ -42,20 +42,20 @@ This allows us to catch small but consistent deviations that would never trip st
 
 We use Hugging Face’s TimeSeriesTransformerForPrediction because it provides:
 
-# ✅ Probabilistic forecasting
+### ✅ Probabilistic forecasting
 - Generates multiple future samples, not a single point estimate
 - Enables uncertainty-aware anomaly scoring
 
-# ✅ Native temporal modeling
+### ✅ Native temporal modeling
 - Learns daily / weekly cycles automatically
 - Uses lagged subsequences internally (ideal for network telemetry)
 
-# ✅ Production-grade architecture
+### ✅ Production-grade architecture
 - Transformer encoder-decoder design
 - Scales to multivariate time series
 - Clean API for training and generation
 
-# ✅ Security-relevant advantage
+### ✅ Security-relevant advantage
 
 Unlike classical ARIMA or simple LSTMs, this model:
 - Handles non-stationary traffic
@@ -277,9 +277,9 @@ Figure: End-to-end architecture for early detection of low-and-slow C2 using net
 ```
 
 ## 🔍 Why This Architecture Works for Low-and-Slow C2
-Key Design Choices
+### Key Design Choices
 
-1. Time-Series First (Not Signature-Based)
+### 1. Time-Series First (Not Signature-Based)
 Instead of asking “Is this known bad?”, the system asks:
 
 “Is this behavior expected given historical patterns?”
@@ -289,7 +289,7 @@ This makes it resilient to:
 - Encrypted traffic
 - Cloud-hosted C2
 
-2. Probabilistic Forecasting (Not Point Prediction)
+### 2. Probabilistic Forecasting (Not Point Prediction)
 The Hugging Face TimeSeriesTransformer produces distributions, not single predictions:
 
 - Mean → expected behavior
@@ -298,7 +298,7 @@ The Hugging Face TimeSeriesTransformer produces distributions, not single predic
 
 This is critical for low-volume stealthy traffic.
 
-3. Persistence-Based Alerting
+### 3. Persistence-Based Alerting
 Low-and-slow C2 doesn’t spike — it repeats.
 
 Persistence logic filters out:
