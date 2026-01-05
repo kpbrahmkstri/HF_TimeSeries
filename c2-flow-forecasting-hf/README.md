@@ -1,4 +1,4 @@
-🕵️‍♂️ Early Detection of Low-and-Slow C2 via Network Flow Time-Series Forecasting
+##🕵️‍♂️ Early Detection of Low-and-Slow C2 via Network Flow Time-Series Forecasting
 Overview
 
 This project demonstrates an early-detection framework for low-and-slow Command-and-Control (C2) activity using network flow time-series forecasting powered by the Hugging Face TimeSeriesTransformer.
