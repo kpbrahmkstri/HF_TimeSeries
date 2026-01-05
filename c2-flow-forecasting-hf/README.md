@@ -14,4 +14,4 @@ pip install -r requirements.txt
 python -m src.main --csv data/flows_test.csv --window 5min
 
 Optional tuning:
-python -m src.main --csv data/flows_test.csv --window 5min --anomaly_threshold 2.5 --persistence_windows 3
+python -m src.main --csv src/data/flows_test.csv --window 5min --anomaly_threshold 2.5 --persistence_windows 3
